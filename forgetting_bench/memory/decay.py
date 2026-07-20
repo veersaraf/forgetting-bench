@@ -67,6 +67,36 @@ class NoDecay(DecayModule):
         return False
 
 
+class LastWriteWins(DecayModule):
+    """A dedup baseline modelling what mem0-style fact memory already does.
+
+    On each add, a newer entry about the same *extracted* slot supersedes the
+    older one, which is then pruned immediately -- so at most one entry per slot
+    survives (last write wins). There is no time decay, so it perfectly handles
+    contradictions it can *link*, but it (a) never forgets anything it can't slot
+    (distractor noise accumulates forever -> unbounded bloat) and (b) misses
+    exactly the paraphrased / implicit contradictions the extractor misses. This
+    is the honest bar the Ebbinghaus module has to beat.
+    """
+
+    def strength(self, entry: MemoryEntry, now: int) -> float:
+        return 1.0
+
+    def retention(self, entry: MemoryEntry, now: int) -> float:
+        return 0.0 if entry.superseded_by is not None else 1.0
+
+    def on_add(self, new_entry: MemoryEntry, existing: Iterable[MemoryEntry]) -> None:
+        slot = new_entry.slot
+        if slot is None:
+            return
+        for e in existing:
+            if e.id != new_entry.id and e.slot == slot and e.superseded_by is None:
+                e.superseded_by = new_entry.id
+
+    def should_prune(self, entry: MemoryEntry, now: int) -> bool:
+        return entry.superseded_by is not None
+
+
 class EbbinghausDecay(DecayModule):
     """Ebbinghaus forgetting curve with importance-weighted consolidation.
 
