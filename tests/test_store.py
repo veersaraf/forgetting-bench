@@ -1,8 +1,10 @@
 from forgetting_bench.memory import (
     EbbinghausDecay,
+    LastWriteWins,
     MemoryStore,
     NoDecay,
 )
+from forgetting_bench.workload.synthetic import default_extractor
 
 
 def test_retrieve_ranks_correct_slot_above_other_slots():
@@ -62,6 +64,38 @@ def test_pruning_bounds_memory_growth():
         off.add(text, turn=turn)
     assert off.size() == 500
     assert on.size() < off.size()
+
+
+def test_last_write_wins_dedups_slots_but_hoards_noise():
+    store = MemoryStore(decay=LastWriteWins())
+    for turn, city in enumerate(["boston", "denver", "austin"]):
+        store.add(f"Alice's home city is {city}.", turn=turn,
+                  entity="alice", attribute="home_city")
+    for turn in range(3, 20):
+        store.add(f"A stranger said thing number {turn}.", turn=turn)  # no slot
+    slot_entries = [e for e in store.entries if e.slot == ("alice", "home_city")]
+    assert len(slot_entries) == 1                       # only the latest survives
+    assert "austin" in slot_entries[0].text
+    assert store.size() == 1 + 17                       # 1 slot + all 17 noise kept
+
+
+def test_store_extracts_keys_and_misses_paraphrases():
+    """Integration: with the real extractor, a canonical update supersedes but a
+    paraphrased one does not, so the stale fact survives as a contradiction."""
+    store = MemoryStore(decay=EbbinghausDecay(tau=500), slot_extractor=default_extractor())
+    store.add("Alice's home city is boston.", turn=0)         # extracted -> slot
+    store.add("Alice relocated to denver.", turn=10)          # paraphrase -> no slot
+
+    entries = {e.text: e for e in store.entries}
+    boston = entries["Alice's home city is boston."]
+    denver = entries["Alice relocated to denver."]
+    assert boston.slot == ("alice", "home_city")
+    assert denver.slot is None                    # extraction missed it
+    assert boston.superseded_by is None           # so the stale fact is NOT superseded
+
+    # The stale canonical fact still ranks top for the query -> a live contradiction.
+    top = store.retrieve("What is Alice's home city?", now=11, k=1)
+    assert "boston" in top[0].entry.text
 
 
 def test_recency_decay_config_validated():
