@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgetting-bench"
+version = "0.1.0"
+description = "A benchmark for whether agent memory forgets, consolidates, and stays bounded -- not just recalls."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Veer Saraf" }]
+keywords = ["llm", "agents", "memory", "benchmark", "forgetting", "retrieval"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# The memory core, harness, workload and metrics are pure standard library.
+# matplotlib is only needed to render the experiment's plots.
+dependencies = [
+    "matplotlib>=3.7,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4,<9"]
+
+[project.scripts]
+forgetting-bench = "forgetting_bench.experiment:main"
+
+[tool.setuptools.packages.find]
+include = ["forgetting_bench*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
