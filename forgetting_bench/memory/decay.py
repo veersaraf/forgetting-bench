@@ -1,13 +1,16 @@
-"""Pluggable decay / consolidation -- the axis incumbent memory libraries ignore.
+"""Pluggable decay / consolidation -- the forgetting axis recall-focused memory
+systems rarely measure.
 
 A :class:`DecayModule` decides, for every entry, a *strength* in [0, 1] that
 multiplies its retrieval score, whether a newer entry *supersedes* it, and
 whether it should be *pruned* from the stream entirely (bounding memory growth).
 
 Swap the module to change forgetting behaviour without touching the store. The
-two shipped implementations are the A/B arms of the headline experiment:
+three shipped implementations are the arms of the headline experiment:
 
-* :class:`NoDecay`   -- the incumbent baseline: nothing is ever forgotten.
+* :class:`NoDecay`        -- keep-everything upper bound: nothing is ever forgotten.
+* :class:`LastWriteWins`  -- the honest incumbent-style bar (per-slot dedup, à la
+  mem0 fact memory).
 * :class:`EbbinghausDecay` -- time decay + importance-weighted consolidation +
   contradiction supersession + strength-threshold pruning.
 """
@@ -52,7 +55,7 @@ class DecayModule(ABC):
 
 
 class NoDecay(DecayModule):
-    """The incumbent baseline. Every memory is retained at full strength forever."""
+    """Keep-everything upper bound. Every memory is retained at full strength forever."""
 
     def strength(self, entry: MemoryEntry, now: int) -> float:
         return 1.0
