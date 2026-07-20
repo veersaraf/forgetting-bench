@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from .decay import DecayModule, NoDecay
 from .embedder import Embedder, HashingEmbedder, cosine
 from .entry import MemoryEntry
+from .extractor import SlotExtractor
 from .importance import HeuristicImportance, ImportanceScorer
 
 
@@ -48,6 +49,7 @@ class MemoryStore:
         decay: DecayModule | None = None,
         weights: RetrievalWeights | None = None,
         recency_decay: float = 0.999,
+        slot_extractor: SlotExtractor | None = None,
     ) -> None:
         if not 0.0 < recency_decay < 1.0:
             raise ValueError("recency_decay must be in (0, 1)")
@@ -56,6 +58,10 @@ class MemoryStore:
         self.decay = decay or NoDecay()
         self.weights = weights or RetrievalWeights()
         self.recency_decay = recency_decay
+        # Derives (entity, attribute) keys from text for supersession. Imperfect
+        # by design (see extractor.py); may be None, in which case callers must
+        # pass keys explicitly or slots go unlinked.
+        self.slot_extractor = slot_extractor
         self._entries: list[MemoryEntry] = []
         self._next_id = 0
 
@@ -70,7 +76,17 @@ class MemoryStore:
         attribute: str | None = None,
         importance: float | None = None,
     ) -> MemoryEntry:
-        """Append an observation and run decay bookkeeping (supersession, prune)."""
+        """Append an observation and run decay bookkeeping (supersession, prune).
+
+        If ``entity``/``attribute`` are not given and a ``slot_extractor`` is
+        configured, the slot key is *extracted from the text* -- imperfectly, as
+        a real system would. Whatever key results (possibly None) is what
+        supersession keys on.
+        """
+        if entity is None and attribute is None and self.slot_extractor is not None:
+            extracted = self.slot_extractor.extract(text)
+            if extracted is not None:
+                entity, attribute = extracted
         entry = MemoryEntry(
             id=self._next_id,
             turn=turn,
