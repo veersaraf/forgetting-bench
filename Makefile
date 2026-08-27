@@ -1,13 +1,17 @@
-.PHONY: install test bench clean
+.PHONY: install test bench bench-live clean
 
 install:
 	pip install -e ".[dev]"
 
 test:
-	pytest -q
+	python -m pytest -q
 
 bench:
 	python -m forgetting_bench.experiment
+
+# Live mem0 / Letta -- skipped (not scored) unless SDKs + credentials are present.
+bench-live:
+	python -m forgetting_bench.experiment --incumbents
 
 clean:
 	rm -f results/*.png results/summary.*

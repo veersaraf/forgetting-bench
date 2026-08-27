@@ -125,12 +125,24 @@ class Workload:
         return [e for e in self.events if isinstance(e, Query)]
 
 
-def default_extractor() -> SlotExtractor:
-    """The keyword extractor the memory core uses on this workload's vocabulary."""
+def keyword_extractor() -> KeywordSlotExtractor:
+    """Transparent keyword teacher -- still used to label the learned extractor."""
     return KeywordSlotExtractor(
         entities=ENTITIES,
         attribute_phrases={spec.phrase: spec.key for spec in ATTRIBUTES.values()},
     )
+
+
+def default_extractor() -> SlotExtractor:
+    """The write-path extractor: a trained PyTorch tagger (see learned_extractor).
+
+    Hard updates are still phrased to defeat extraction -- the learned model is
+    trained to imitate the keyword teacher, not to decode paraphrases. Metrics
+    stay scored against ground truth the memory never sees.
+    """
+    from ..memory.learned_extractor import default_learned_extractor
+
+    return default_learned_extractor()
 
 
 def generate_workload(

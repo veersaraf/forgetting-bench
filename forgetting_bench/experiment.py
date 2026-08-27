@@ -1,19 +1,24 @@
-"""The headline experiment: three memory policies over one seeded workload.
+"""The headline experiment: memory policies over one seeded workload.
 
 Run with ``python -m forgetting_bench.experiment`` (or ``make bench``). It:
 
 1. builds a deterministic long-horizon workload (40% of updates are paraphrased
-   or implicit, so keyword slot-extraction genuinely misses some contradictions),
-2. replays it through the reference core under three policies -- keep-everything,
-   last-write-wins dedup (the mem0-style bar), and Ebbinghaus decay,
+   or implicit, so slot-extraction genuinely misses some contradictions),
+2. replays it through the reference core under keep-everything, last-write-wins
+   dedup, Ebbinghaus decay, and a learned forget policy,
 3. sweeps decay stability (``tau``) to trace the forgetting-vs-recall frontier,
 4. writes a results table (``results/summary.{json,md}``) and three plots.
+
+``--incumbents`` additionally constructs live mem0 / Letta adapters when the
+SDK and credentials are present. If they are not runnable, the run prints the
+probe reason and does **not** invent a score.
 
 Every number printed comes from the actual run -- nothing here is hard-coded.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,10 +28,12 @@ import matplotlib
 matplotlib.use("Agg")  # headless: no display needed
 import matplotlib.pyplot as plt  # noqa: E402
 
+from .adapters.errors import AdapterUnavailable  # noqa: E402
+from .adapters.probe import incumbent_probes  # noqa: E402
 from .adapters.reference import ReferenceAdapter  # noqa: E402
 from .bench.harness import BenchResult, run  # noqa: E402
 from .bench.metrics import QueryEval, contradiction_rate  # noqa: E402
-from .memory import EbbinghausDecay, LastWriteWins, NoDecay  # noqa: E402
+from .memory import EbbinghausDecay, LastWriteWins, LearnedForget, NoDecay  # noqa: E402
 from .workload.synthetic import generate_workload  # noqa: E402
 
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
@@ -35,6 +42,7 @@ RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
 KEEP_ALL = "keep-everything"
 LWW = "last-write-wins"
 DECAY = "ebbinghaus-decay"
+LEARNED = "learned-forget"
 
 
 @dataclass
@@ -51,11 +59,33 @@ def run_arms(cfg: ABConfig) -> dict[str, BenchResult]:
         KEEP_ALL: NoDecay(),
         LWW: LastWriteWins(),
         DECAY: EbbinghausDecay(tau=cfg.tau),
+        LEARNED: LearnedForget.trained(seed=cfg.seed),
     }
     return {
         name: run(ReferenceAdapter(decay, name=name), workload, k=cfg.k)
         for name, decay in arms.items()
     }
+
+
+def try_live_incumbents(cfg: ABConfig) -> tuple[dict[str, BenchResult], list[str]]:
+    """Run live backends that probe as runnable. Skip (do not score) the rest."""
+    from .adapters.letta import LettaAdapter
+    from .adapters.mem0 import Mem0Adapter
+
+    workload = generate_workload(seed=cfg.seed, n_turns=cfg.n_turns)
+    results: dict[str, BenchResult] = {}
+    skips: list[str] = []
+    for name, factory in (("mem0", Mem0Adapter), ("letta", LettaAdapter)):
+        try:
+            adapter = factory()
+        except AdapterUnavailable as exc:
+            skips.append(str(exc))
+            continue
+        try:
+            results[name] = run(adapter, workload, k=cfg.k)
+        except Exception as exc:  # noqa: BLE001 -- live backend failed mid-run
+            skips.append(f"{name} started but failed: {exc}")
+    return results, skips
 
 
 def sweep_tau(cfg: ABConfig, taus: list[float]) -> list[tuple[float, float, float, int]]:
@@ -70,7 +100,14 @@ def sweep_tau(cfg: ABConfig, taus: list[float]) -> list[tuple[float, float, floa
 
 # -- plotting --------------------------------------------------------------
 
-_COLORS = {KEEP_ALL: "#b02418", LWW: "#d98c00", DECAY: "#1f6feb"}
+_COLORS = {
+    KEEP_ALL: "#b02418",
+    LWW: "#d98c00",
+    DECAY: "#1f6feb",
+    LEARNED: "#6f42c1",
+    "mem0": "#111111",
+    "letta": "#2da44e",
+}
 
 
 def _bucketed_contradiction(evals: list[QueryEval], n_turns: int, bins: int = 20):
@@ -90,7 +127,7 @@ def plot_bloat(results: dict[str, BenchResult], path: Path) -> None:
     for name, res in results.items():
         turns = [t for t, _ in res.size_trace]
         sizes = [s for _, s in res.size_trace]
-        ax.plot(turns, sizes, label=name, linewidth=2, color=_COLORS[name])
+        ax.plot(turns, sizes, label=name, linewidth=2, color=_COLORS.get(name, "#333"))
     ax.set_xlabel("turn")
     ax.set_ylabel("live memories held")
     ax.set_title("Memory growth over a long horizon")
@@ -106,7 +143,7 @@ def plot_contradiction(results: dict[str, BenchResult], n_turns: int, path: Path
     for name, res in results.items():
         xs, ys = _bucketed_contradiction(res.evals, n_turns)
         ax.plot(xs, ys, label=name, linewidth=2, marker="o", markersize=3,
-                color=_COLORS[name])
+                color=_COLORS.get(name, "#333"))
     ax.set_xlabel("turn")
     ax.set_ylabel("stale-fact contradiction rate")
     ax.set_ylim(-0.02, 1.02)
@@ -136,10 +173,12 @@ def plot_frontier(
         if tau in annotate:
             ax.annotate(f"τ={tau:g}", (rec, con), textcoords="offset points",
                         xytext=(6, -12), fontsize=8, color="#555")
-    for name in (KEEP_ALL, LWW):
+    for name in (KEEP_ALL, LWW, LEARNED):
+        if name not in results:
+            continue
         res = results[name]
         ax.scatter([res.recall_rate], [res.contradiction_rate], s=90, zorder=4,
-                   color=_COLORS[name], label=name, edgecolor="white")
+                   color=_COLORS.get(name, "#333"), label=name, edgecolor="white")
     ax.set_xlabel("recall rate (current fact retrieved)  →  better")
     ax.set_ylabel("contradiction rate (stale fact retrieved)  →  worse")
     ax.set_title("Forgetting-vs-recall frontier")
@@ -179,15 +218,40 @@ def _format_table(results: dict[str, BenchResult]) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Forgetting-Bench headline experiment")
+    parser.add_argument(
+        "--incumbents",
+        action="store_true",
+        help="Also run live mem0 / Letta adapters when configured. "
+        "Skips (does not invent results) when the SDK or credentials are missing.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
     cfg = ABConfig()
     RESULTS_DIR.mkdir(exist_ok=True)
 
+    print("Live incumbent probes (not scored unless --incumbents and runnable):")
+    for probe in incumbent_probes():
+        print(f"  {probe.summary()}")
+
     results = run_arms(cfg)
+    skipped: list[str] = []
+    if args.incumbents:
+        live, skipped = try_live_incumbents(cfg)
+        results.update(live)
+
     table = _format_table(results)
     print(f"\nForgetting-Bench  (seed={cfg.seed}, {cfg.n_turns} turns, k={cfg.k}, "
           f"tau={cfg.tau:g}, hard-update fraction=0.4)\n")
     print(table)
+    if skipped:
+        print("\nIncumbents not scored:")
+        for line in skipped:
+            print(f"  - {line}")
 
     taus = [30, 60, 120, 240, 500, 1000]
     sweep = sweep_tau(cfg, taus)
@@ -203,12 +267,22 @@ def main() -> None:
             {"tau": t, "recall_rate": r, "contradiction_rate": c, "final_size": s}
             for t, r, c, s in sweep
         ],
+        "incumbent_probes": [
+            {"name": p.name, "runnable": p.runnable, "reason": p.reason}
+            for p in incumbent_probes()
+        ],
+        "incumbents_skipped": skipped,
     }
     (RESULTS_DIR / "summary.json").write_text(json.dumps(summary, indent=2))
+    skip_block = ""
+    if skipped:
+        skip_block = "\n\nIncumbents not scored:\n" + "\n".join(f"- {s}" for s in skipped)
+    probes = "\n".join(f"- {p.summary()}" for p in incumbent_probes())
     (RESULTS_DIR / "summary.md").write_text(
         f"# Forgetting-Bench results\n\n"
         f"seed={cfg.seed}, n_turns={cfg.n_turns}, k={cfg.k}, tau={cfg.tau:g}\n\n"
-        f"{table}\n"
+        f"{table}\n\n"
+        f"## Live incumbent probes\n\n{probes}{skip_block}\n"
     )
     print(f"\nWrote plots + summary to {RESULTS_DIR}/")
 
