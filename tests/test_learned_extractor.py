@@ -48,6 +48,12 @@ def test_learned_hits_canonical_and_misses_hard_updates():
     assert ex.extract("A coworker complained about the printer again.") is None
 
 
+def test_learned_does_not_invent_an_entity():
+    ex = default_learned_extractor()
+    assert ex.extract("the home city is boston") is None
+    assert ex.extract("someone's salary is 110k.") is None
+
+
 def test_learned_does_not_leak_value_to_attribute():
     """'denver' alone must not become home_city -- that would collapse the gap."""
     ex = default_learned_extractor()

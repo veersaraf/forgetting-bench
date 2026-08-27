@@ -134,6 +134,12 @@ def _enumerate_training_texts() -> list[str]:
                 texts.append(f"A podcast discussed {value}.")
         texts.append(f"{title} said hello.")
         texts.append(f"{title} walked outside.")
+    # Attribute phrase, no known entity -- teacher labels None; stops the
+    # entity head from inventing a person just because "home city" fired.
+    for spec in ATTRIBUTES.values():
+        for value in spec.values:
+            texts.append(f"the {spec.phrase} is {value}.")
+            texts.append(f"someone's {spec.phrase} is {value}.")
     for subject in _NOISE_SUBJECTS:
         for pred in _NOISE_PREDICATES:
             texts.append(f"{subject.title()} {pred}.")
@@ -250,7 +256,14 @@ class LearnedSlotExtractor(SlotExtractor):
                 or float(attr_prob[attr_idx]) < self.threshold
             ):
                 return None
-            return self.entities[ent_idx - 1], self.attributes[attr_idx - 1]
+            entity = self.entities[ent_idx - 1]
+            attribute = self.attributes[attr_idx - 1]
+            # Constrained decode: never emit an entity whose name is not in the
+            # text. The network still scores the heads; this only blocks
+            # hallucinations like tagging "the home city is boston" as Grace.
+            if entity.lower() not in tokenize(text):
+                return None
+            return entity, attribute
 
 
 _DEFAULT: LearnedSlotExtractor | None = None

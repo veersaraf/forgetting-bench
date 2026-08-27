@@ -14,21 +14,21 @@ The catch that makes this honest: the memory core does **not** receive clean slo
 
 ## The finding
 
-Three memory policies over the same workload (seed 0, 3,000 turns, 367 queries, top-5 retrieval):
+Four memory policies over the same workload (seed 0, 3,000 turns, 367 queries, top-5 retrieval):
 
-| Metric (n=367 queries) | keep-everything | last-write-wins | ebbinghaus-decay | want |
-|---|---|---|---|---|
-| **Stale-fact contradiction rate** | 0.807 | 0.330 | **0.319** | lower |
-| Stale fraction of retrieved context | 0.359 | 0.066 | **0.064** | lower |
-| Recall (current fact retrieved) | 0.760 | 0.670 | 0.668 | higher |
-| Answer accuracy (top-1 correct) | 0.657 | 0.657 | 0.654 | higher |
-| Precision (correct fact / retrieved) | 0.190 | 0.134 | 0.134 | higher |
-| **Final memory size** (entries) | 2,633 | 2,325 | **1,361** | lower |
-| **Final token count** | 18,859 | 17,121 | **9,903** | lower |
+| Metric (n=367 queries) | keep-everything | last-write-wins | ebbinghaus-decay | learned-forget | want |
+|---|---|---|---|---|---|
+| **Stale-fact contradiction rate** | 0.807 | 0.330 | **0.319** | 0.322 | lower |
+| Stale fraction of retrieved context | 0.359 | 0.066 | **0.064** | 0.064 | lower |
+| Recall (current fact retrieved) | 0.760 | 0.670 | 0.668 | 0.668 | higher |
+| Answer accuracy (top-1 correct) | 0.657 | 0.657 | 0.654 | 0.657 | higher |
+| Precision (correct fact / retrieved) | 0.190 | 0.134 | 0.134 | 0.134 | higher |
+| **Final memory size** (entries) | 2,633 | 2,325 | **1,361** | 198 | lower |
+| **Final token count** | 18,859 | 17,121 | **9,903** | 1,346 | lower |
 
-Read this honestly — there are three distinct findings, not one flashy one:
+Read this honestly — there are four distinct findings, not one flashy one:
 
-1. **No policy drives contradictions to zero.** Slot extraction misses ~40% of the updates, so there is a real contradiction *floor* (~0.33) that both dedup and decay hit. A benchmark where the number went to 0.000 would be measuring its own plumbing, not memory quality.
+1. **No policy drives contradictions to zero.** Slot extraction misses ~40% of the updates, so there is a real contradiction *floor* (~0.33) that dedup, decay, and the learned policy all hit. A benchmark where the number went to 0.000 would be measuring its own plumbing, not memory quality.
 
 2. **Decay's genuine win over the mem0-style bar is bounded memory, not contradiction.** `last-write-wins` (per-slot dedup — what mem0-style fact memory already does) matches decay on contradictions and recall. But it never forgets what it can't slot, so **distractor noise accumulates forever**. Ebbinghaus decay matches its contradiction handling (0.319 vs 0.330) and recall (0.668 vs 0.670) while holding **~40% less memory / ~42% fewer tokens** — and the gap widens with horizon:
 
@@ -38,7 +38,9 @@ Read this honestly — there are three distinct findings, not one flashy one:
 
    ![Forgetting-vs-recall frontier](results/frontier.png)
 
-Every number here is produced by `make bench` — see [Reproduce it](#reproduce-the-finding). `make bench` also runs a fourth reference arm, **learned-forget** (a trained PyTorch prune/rank policy). That column is written to `results/summary.{json,md}` from the harness; it is not copied into this table unless those files say so.
+4. **A learned forget policy can sit on that same floor with a tighter bound.** `learned-forget` (a PyTorch MLP over age / importance / superseded / slotted) scored 0.322 contradiction and 0.668 recall — the same operating point as Ebbinghaus — while holding **198 entries / 1,346 tokens**. That is not a contradiction win and not a mem0 number; it is the policy forgetting unslotted distractors on a shorter horizon than the analytic curve. The extractor miss still sets the floor.
+
+Every number here is produced by `make bench` — see [Reproduce it](#reproduce-the-finding). Live mem0 / Letta are probed, not scored.
 
 **On the one adverse number:** keep-everything "wins" precision (0.190 vs 0.134) and recall (0.760). That is hoarding, not skill — retaining every past value means old entries whose value coincidentally equals the current one get counted as correct hits. The same hoarding is why it has by far the *worst* contradiction rate. Reported here rather than dropped.
 
@@ -98,8 +100,9 @@ make bench-live # same, plus live mem0 / Letta if SDKs + credentials exist
 Runs the reference arms (keep-everything, last-write-wins, ebbinghaus-decay, learned-forget) plus the `τ` sweep over one seeded workload, prints the table, and writes `results/summary.{json,md}` and three plots (`bloat.png`, `contradiction.png`, `frontier.png`). Deterministic: same seed, same numbers. Live incumbents are probed every run; they are only *scored* when `--incumbents` is set **and** the backend actually opens.
 
 ```bash
-make test       # scoring, decay, supersession, learned extraction, learned
-                # forget, adapter probes, workload ground truth, finding guards
+make test       # 65 tests: scoring, decay, supersession, learned extraction,
+                # learned forget, adapter probes, workload ground truth,
+                # and a guard on the finding across seeds
 ```
 
 ## How it works

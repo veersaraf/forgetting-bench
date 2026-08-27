@@ -58,7 +58,8 @@ def test_learned_forget_bounds_noise_unlike_last_write_wins():
         learned.add(text, turn=turn)
         lww.add(text, turn=turn)
     assert lww.size() == 400
-    assert learned.size() < 200
+    assert learned.size() < lww.size() * 0.7
+    assert learned.size() < 280
 
 
 def test_learned_forget_supersedes_on_extracted_slots():

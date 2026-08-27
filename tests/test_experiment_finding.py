@@ -8,7 +8,7 @@ realistic-contradiction setup, these should fail.
 
 from forgetting_bench.adapters.reference import ReferenceAdapter
 from forgetting_bench.bench.harness import run
-from forgetting_bench.memory import EbbinghausDecay, LastWriteWins, NoDecay
+from forgetting_bench.memory import EbbinghausDecay, LastWriteWins, LearnedForget, NoDecay
 from forgetting_bench.workload.synthetic import generate_workload
 
 
@@ -69,6 +69,18 @@ def test_contradiction_is_tau_sensitive_a_real_frontier():
     assert aggressive.contradiction_rate < lenient.contradiction_rate - 0.1
     assert aggressive.recall_rate < lenient.recall_rate - 0.05
     assert aggressive.final_size < lenient.final_size
+
+
+def test_learned_forget_matches_floor_and_bounds_harder_than_decay():
+    """Harness-shaped guard: learned-forget sits on the same contradiction
+    floor as Ebbinghaus, with a tighter bound on unslotted noise."""
+    wl = generate_workload(seed=0, n_turns=3000)
+    decay = run(ReferenceAdapter(EbbinghausDecay(tau=150)), wl, k=5)
+    learned = run(ReferenceAdapter(LearnedForget.trained(seed=0)), wl, k=5)
+    assert abs(learned.contradiction_rate - decay.contradiction_rate) < 0.05
+    assert abs(learned.recall_rate - decay.recall_rate) < 0.05
+    assert learned.final_size < decay.final_size
+    assert learned.final_tokens < decay.final_tokens
 
 
 def test_finding_holds_across_seeds():

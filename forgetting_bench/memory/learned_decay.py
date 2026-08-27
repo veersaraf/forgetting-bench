@@ -69,8 +69,9 @@ def _teacher_targets(
     supersede_mask = superseded > 0.5
     slot_mask = slotted > 0.5
     retention = torch.where(supersede_mask, retention * 0.05, retention)
-    # Unslotted distractors decay on a ~80-turn horizon.
-    noise_ret = torch.exp(-turns / 80.0)
+    # Unslotted distractors decay on a ~50-turn horizon so noise is actually
+    # forgotten -- last-write-wins never drops what it cannot slot.
+    noise_ret = torch.exp(-turns / 50.0)
     retention = torch.where(slot_mask, retention, noise_ret)
     prune = (retention < 0.02).float()
     strength = torch.where(
