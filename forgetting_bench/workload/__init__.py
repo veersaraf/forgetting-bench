@@ -9,6 +9,7 @@ from .synthetic import (
     Workload,
     default_extractor,
     generate_workload,
+    keyword_extractor,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "Workload",
     "default_extractor",
     "generate_workload",
+    "keyword_extractor",
 ]

@@ -8,9 +8,9 @@ misses (a paraphrase, an implicit/numeric update that never restates the
 attribute), the stale fact is never linked and survives as a live contradiction.
 
 That imperfection is what makes the contradiction metric something the decay
-mechanism can actually *fail* at, rather than a tautology. The default extractor
-is a transparent keyword matcher; :class:`SlotExtractor` is the seam for an
-LLM-backed extractor that would close some (never all) of the gap.
+mechanism can actually *fail* at, rather than a tautology. :class:`KeywordSlotExtractor`
+is the transparent teacher; the write path uses a small PyTorch tagger trained
+to imitate it (see ``learned_extractor.py``), so paraphrases still miss.
 """
 
 from __future__ import annotations

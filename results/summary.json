@@ -38,6 +38,17 @@
       "peak_size": 1374.0,
       "final_tokens": 9903.0,
       "n_queries": 367.0
+    },
+    "learned-forget": {
+      "contradiction_rate": 0.3215258855585831,
+      "recall_rate": 0.667574931880109,
+      "answer_accuracy": 0.6566757493188011,
+      "mean_precision": 0.1335149863760218,
+      "stale_context_rate": 0.06430517711171663,
+      "final_size": 198.0,
+      "peak_size": 223.0,
+      "final_tokens": 1346.0,
+      "n_queries": 367.0
     }
   },
   "tau_sweep": [
@@ -77,5 +88,21 @@
       "contradiction_rate": 0.329700272479564,
       "final_size": 2584
     }
+  ],
+  "incumbent_probes": [
+    {
+      "name": "mem0",
+      "runnable": false,
+      "reason": "mem0ai is not installed"
+    },
+    {
+      "name": "letta",
+      "runnable": false,
+      "reason": "letta-client (or letta) is not installed"
+    }
+  ],
+  "incumbents_skipped": [
+    "mem0 is not runnable: mem0ai is not installed",
+    "letta is not runnable: letta-client (or letta) is not installed"
   ]
 }

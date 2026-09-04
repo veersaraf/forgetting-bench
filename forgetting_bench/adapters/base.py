@@ -9,7 +9,7 @@ observation into its backend and (2) answer a query with a ranked list of
 
 Real backends won't hand you (entity, attribute, value) for free -- you store it
 as memory metadata on write and read it back on retrieve. See
-``adapters/mem0_stub.py`` for how that maps onto an incumbent API.
+``adapters/mem0.py`` and ``adapters/letta.py`` for how that maps onto a live API.
 """
 
 from __future__ import annotations

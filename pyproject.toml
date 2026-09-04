@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forgetting-bench"
-version = "0.1.0"
+version = "0.2.0"
 description = "A benchmark for whether agent memory forgets, consolidates, and stays bounded -- not just recalls."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,14 +17,17 @@ classifiers = [
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# The memory core, harness, workload and metrics are pure standard library.
+# Torch is required: the default slot extractor and the learned forget policy
+# are real nn.Modules on the write / decay path (CPU is enough; no CUDA).
 # matplotlib is only needed to render the experiment's plots.
 dependencies = [
     "matplotlib>=3.7,<4",
+    "torch>=2.1,<3",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4,<9"]
+incumbents = ["mem0ai>=1.0", "letta-client>=0.1"]
 
 [project.scripts]
 forgetting-bench = "forgetting_bench.experiment:main"

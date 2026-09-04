@@ -1,10 +1,16 @@
-from forgetting_bench.workload.synthetic import default_extractor
+from forgetting_bench.workload.synthetic import default_extractor, keyword_extractor
 
 
 def test_extracts_canonical_statement():
     ex = default_extractor()
     assert ex.extract("Alice's home city is boston.") == ("alice", "home_city")
     assert ex.extract("Alice's home city is now denver.") == ("alice", "home_city")
+
+
+def test_keyword_teacher_still_available():
+    ex = keyword_extractor()
+    assert ex.extract("Alice's home city is boston.") == ("alice", "home_city")
+    assert ex.extract("Alice relocated to denver.") is None
 
 
 def test_extracts_canonical_salary():
